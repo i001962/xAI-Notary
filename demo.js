@@ -10,18 +10,19 @@ const readlineSync = require('readline-sync');
 const HORIZON_BASE = 'https://developers.cryptowerk.com/platform/API/v8';
 const HEADERS = {
   'X-API-Key': `${process.env.HORIZON_API_KEY} ${process.env.HORIZON_API_SECRET}`,
-  'Content-Type': 'application/json',
+  'Accept': 'application/json',
+  'Content-Type': 'application/x-www-form-urlencoded',
 };
 
 async function registerHash(dataHash, lookupInfo = 'Grok-CLI-demo') {
-  const params = new URLSearchParams({
+  const body = new URLSearchParams({
     hashes: dataHash,
     mode: 'bulkSeal',
     lookupInfo,
   });
 
   try {
-    const response = await axios.post(`${HORIZON_BASE}/register?${params.toString()}`, {}, {
+    const response = await axios.post(`${HORIZON_BASE}/register`, body.toString(), {
       headers: HEADERS,
     });
     const docs = response.data.documents || [];
@@ -34,7 +35,7 @@ async function registerHash(dataHash, lookupInfo = 'Grok-CLI-demo') {
 }
 
 async function pollForSeal(retrievalId) {
-  const params = new URLSearchParams({
+  const body = new URLSearchParams({
     retrievalId,
     provideVerificationInfos: 'true',
     hashSequenceKnown: 'true',
@@ -44,7 +45,7 @@ async function pollForSeal(retrievalId) {
 
   for (let attempt = 1; attempt <= 40; attempt++) {
     try {
-      const response = await axios.post(`${HORIZON_BASE}/getseal?${params.toString()}`, {}, {
+      const response = await axios.post(`${HORIZON_BASE}/getseal`, body.toString(), {
         headers: HEADERS,
       });
       const doc = response.data.documents?.[0] || {};
