@@ -114,7 +114,7 @@ async function main() {
     const bcRegs = sealDoc.blockchainRegistrations || [];
     bcRegs.forEach((reg, i) => {
       console.log(`\nBlockchain ${i + 1}: ${reg.blockChainDesc?.generalName || 'Unknown'}`);
-      console.log('Inserted at:', new Date(reg.insertedIntoBlockchainAt * 1000).toISOString());
+      console.log('Inserted at:', new Date(reg.insertedIntoBlockchainAt).toISOString());
       if (reg.bcExplorerUrls?.length) {
         console.log('Explorer links:');
         reg.bcExplorerUrls.forEach(url => console.log(`  ${url}`));
