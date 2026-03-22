@@ -21,7 +21,7 @@ async function registerHash(dataHash, lookupInfo = 'Grok-CLI-demo') {
   };
 
   try {
-    const response = await axios.post(`${HORIZON_BASE}/register`, null, {
+    const response = await axios.post(`${HORIZON_BASE}/register`, {}, {
       params,
       headers: HEADERS,
     });
@@ -45,7 +45,7 @@ async function pollForSeal(retrievalId) {
 
   for (let attempt = 1; attempt <= 40; attempt++) {
     try {
-      const response = await axios.post(`${HORIZON_BASE}/getseal`, null, {
+      const response = await axios.post(`${HORIZON_BASE}/getseal`, {}, {
         params,
         headers: HEADERS,
       });
@@ -80,7 +80,7 @@ async function main() {
   try {
     // 1. Call Grok via @ai-sdk/xai
     const { text: grokResponse } = await generateText({
-      model: xai('grok-4.20-reasoning'),
+      model: xai('grok-3-mini'),
       prompt,
     });
 
