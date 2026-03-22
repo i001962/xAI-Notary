@@ -5,6 +5,8 @@ const { generateText } = require('ai');
 const crypto = require('crypto');
 const axios = require('axios');
 const readlineSync = require('readline-sync');
+const fs = require('fs');
+const path = require('path');
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const HORIZON_BASE = 'https://developers.cryptowerk.com/platform/API/v8';
@@ -13,6 +15,66 @@ const HEADERS = {
   'Accept': 'application/json',
   'Content-Type': 'application/x-www-form-urlencoded',
 };
+
+function sha256Hex(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function ensureArtifactsDir() {
+  const dir = path.join(__dirname, 'artifacts');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function saveArtifacts({ prompt, grokResponse, hash, retrievalId, sealDoc }) {
+  const baseDir = ensureArtifactsDir();
+  const runId = new Date().toISOString().replace(/[:.]/g, '-');
+  const runDir = path.join(baseDir, runId);
+  fs.mkdirSync(runDir, { recursive: true });
+
+  const responsePath = path.join(runDir, 'response.txt');
+  const sealPath = path.join(runDir, 'seal.json');
+  const metaPath = path.join(runDir, 'meta.json');
+
+  fs.writeFileSync(responsePath, grokResponse, 'utf8');
+  fs.writeFileSync(sealPath, JSON.stringify(sealDoc.seal, null, 2));
+  fs.writeFileSync(
+    metaPath,
+    JSON.stringify(
+      {
+        prompt,
+        retrievalId,
+        responseHash: hash,
+        verificationURL: sealDoc.verificationURL || null,
+        blockchainRegistrations: sealDoc.blockchainRegistrations || [],
+        submittedAt: sealDoc.submittedAt || null,
+      },
+      null,
+      2
+    )
+  );
+
+  return {
+    runDir,
+    responsePath,
+    sealPath,
+    metaPath,
+  };
+}
+
+async function verifySeal({ hash, seal }) {
+  const body = new URLSearchParams({
+    verifyDocHashes: hash,
+    seals: JSON.stringify(seal),
+    provideInstructions: 'true',
+  });
+
+  const response = await axios.post(`${HORIZON_BASE}/verifyseal`, body.toString(), {
+    headers: HEADERS,
+  });
+
+  return response.data;
+}
 
 async function registerHash(dataHash, lookupInfo = 'Grok-CLI-demo') {
   const body = new URLSearchParams({
@@ -89,7 +151,7 @@ async function main() {
     console.log('\n');
 
     // 2. Hash it (SHA-256)
-    const hash = crypto.createHash('sha256').update(grokResponse).digest('hex');
+    const hash = sha256Hex(grokResponse);
     console.log('SHA-256 Hash:', hash);
 
     // 3. Register with Horizon
@@ -121,9 +183,25 @@ async function main() {
       }
     });
 
+    const artifacts = saveArtifacts({ prompt, grokResponse, hash, retrievalId, sealDoc });
+    console.log('\nArtifacts saved:');
+    console.log('Response:', artifacts.responsePath);
+    console.log('Seal:', artifacts.sealPath);
+    console.log('Metadata:', artifacts.metaPath);
+
+    console.log('\nVerifying saved artifacts with Horizon...');
+    const savedResponse = fs.readFileSync(artifacts.responsePath, 'utf8');
+    const savedSeal = JSON.parse(fs.readFileSync(artifacts.sealPath, 'utf8'));
+    const verifyResult = await verifySeal({
+      hash: sha256Hex(savedResponse),
+      seal: savedSeal,
+    });
+    console.log('Verification response:');
+    console.log(JSON.stringify(verifyResult, null, 2));
+
     console.log('\nVerification tip: Re-hash the Grok response above and follow the Merkle proof ops in seal.proofs to verify against the blockchain tx.');
   } catch (err) {
-    console.error('\nError:', err.message);
+    console.error('\nError:', err.response?.data || err.message);
   }
 }
 
