@@ -14,15 +14,14 @@ const HEADERS = {
 };
 
 async function registerHash(dataHash, lookupInfo = 'Grok-CLI-demo') {
-  const params = {
+  const params = new URLSearchParams({
     hashes: dataHash,
     mode: 'bulkSeal',
     lookupInfo,
-  };
+  });
 
   try {
-    const response = await axios.post(`${HORIZON_BASE}/register`, {}, {
-      params,
+    const response = await axios.post(`${HORIZON_BASE}/register?${params.toString()}`, {}, {
       headers: HEADERS,
     });
     const docs = response.data.documents || [];
@@ -35,18 +34,17 @@ async function registerHash(dataHash, lookupInfo = 'Grok-CLI-demo') {
 }
 
 async function pollForSeal(retrievalId) {
-  const params = {
+  const params = new URLSearchParams({
     retrievalId,
-    provideVerificationInfos: true,
-    hashSequenceKnown: true,
-  };
+    provideVerificationInfos: 'true',
+    hashSequenceKnown: 'true',
+  });
 
   console.log('Polling for seal (can take minutes depending on chain confirmation)...');
 
   for (let attempt = 1; attempt <= 40; attempt++) {
     try {
-      const response = await axios.post(`${HORIZON_BASE}/getseal`, {}, {
-        params,
+      const response = await axios.post(`${HORIZON_BASE}/getseal?${params.toString()}`, {}, {
         headers: HEADERS,
       });
       const doc = response.data.documents?.[0] || {};
