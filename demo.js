@@ -17,7 +17,7 @@ const HEADERS = {
 async function registerHash(dataHash, lookupInfo = 'Grok-CLI-demo') {
   const body = new URLSearchParams({
     hashes: dataHash,
-    mode: 'bulkSeal',
+    mode: 'individualSeal',
     lookupInfo,
   });
 
@@ -51,8 +51,8 @@ async function pollForSeal(retrievalId) {
       const doc = response.data.documents?.[0] || {};
       const seal = doc.seal || {};
 
-      if (seal.isComplete && seal.hasBeenInsertedIntoAtLeastOneBlockchain) {
-        return seal;
+      if (seal.isComplete && doc.hasBeenInsertedIntoAtLeastOneBlockchain) {
+        return doc;
       }
 
       console.log(`Attempt ${attempt}: Not ready yet...`);
@@ -98,19 +98,20 @@ async function main() {
     console.log('Retrieval ID:', retrievalId);
 
     // 4. Poll until sealed
-    const seal = await pollForSeal(retrievalId);
+    const sealDoc = await pollForSeal(retrievalId);
+    const seal = sealDoc.seal || {};
 
     // 5. Show results
     console.log('\nSeal Success! 🎉');
     console.log('Seal Details:');
-    console.log('Submitted at:', new Date(seal.submittedAt * 1000).toISOString());
+    console.log('Submitted at:', new Date(sealDoc.submittedAt).toISOString());
     console.log('Complete:', seal.isComplete);
-    console.log('In at least one blockchain:', seal.hasBeenInsertedIntoAtLeastOneBlockchain);
+    console.log('In at least one blockchain:', sealDoc.hasBeenInsertedIntoAtLeastOneBlockchain);
 
     const proofs = seal.proofs?.[0] || {};
     console.log('Proof method:', proofs.bundleMethod);
 
-    const bcRegs = seal.blockchainRegistrations || [];
+    const bcRegs = sealDoc.blockchainRegistrations || [];
     bcRegs.forEach((reg, i) => {
       console.log(`\nBlockchain ${i + 1}: ${reg.blockChainDesc?.generalName || 'Unknown'}`);
       console.log('Inserted at:', new Date(reg.insertedIntoBlockchainAt * 1000).toISOString());
