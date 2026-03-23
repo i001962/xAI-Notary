@@ -90,12 +90,52 @@ Each demo run writes a new directory under `artifacts/` containing:
 
 `meta.json` includes the prompt and response hashes, retrieval IDs, verification URLs, blockchain registrations, and submitted timestamps.
 
+## Verification Details
+
+- `POST /verifyseal` takes the document hash in `verifyDocHashes` and the previously returned seal in `seals`.
+- For a single document, `seals` may be a single seal object.
+- For multiple documents in one verification call, `seals` should be a JSON array of seals in the same logical pairing as the submitted hashes.
+- The CLI currently verifies the prompt and response in two separate `verifyseal` calls for clarity.
+
+## Independent Verification
+
+You do not need to rely on Cryptowerk forever to prove the registration. The saved seal contains the hash operations and blockchain transaction references needed to verify independently later:
+
+1. Re-hash the saved `prompt.txt` or `response.txt` with SHA-256.
+2. Confirm that hash matches the `DOC_SHA256` operation inside the saved seal.
+3. Follow the seal's hash operations (`PREPEND_THEN_SHA256`, `APPEND_THEN_SHA256`, `ANCHOR_SHA256`) to recompute the anchor hash.
+4. Compare that anchor against the blockchain transaction referenced in the seal or the explorer URLs in `meta.json`.
+
+On macOS or Linux, a local re-hash looks like:
+
+```bash
+shasum -a 256 artifacts/<run-directory>/prompt.txt
+shasum -a 256 artifacts/<run-directory>/response.txt
+```
+
+## Seal Output Formats
+
+The Cryptowerk tutorials describe additional experimental `getseal` output wrappers beyond raw JSON:
+
+- `certificateHTML`
+- `certificatePDF`
+- `QRWithSeal`
+
+This repo does not currently fetch those wrappers, but they can be requested from `POST /getseal` if you want HTML, PDF, or QR-rendered proof artifacts in addition to the raw seal JSON.
+
+## cURL / jq Notes
+
+If you want to inspect Horizon responses manually outside the CLI, `jq` is useful for formatting large JSON responses and extracting fields such as retrieval IDs or seals. The Cryptowerk tutorials also use shell environment variables and URL encoding helpers for cURL-heavy workflows.
+
 ## Notes
 
 - **Model**: Using `grok-3-mini`. Check the [xAI model docs](https://docs.x.ai/developers/models) for alternatives.
 - **Polling**: Real blockchain anchors can take several minutes (Bitcoin/Ethereum confirmation times). The script polls every 10 seconds for up to ~7 minutes.
 - **Registration mode**: Horizon registration uses `individualSeal` so the prompt and response each receive their own retrieval ID and seal.
 - **Verification**: The CLI verifies both saved artifacts automatically at the end of a run using `POST /verifyseal`. You can also rerun verification later with `node demo.js verify <artifacts-run-directory>`.
+- **`/getseal` semantics**: A seal is complete when the response document reports `seal.isComplete === true`. The blockchain insertion state is reported at the document level, for example `hasBeenInsertedIntoAtLeastOneBlockchain`.
+- **Callbacks**: Horizon also supports callbacks via webhook, email, or MQTT, but this repo intentionally uses polling to keep the demo self-contained.
+- **Bulk seals**: Horizon supports `bulkSeal` mode for large collections of hashes, but this demo intentionally stays on `individualSeal` because it keeps prompt and response verification easy to understand.
 
 ## Dependencies
 
