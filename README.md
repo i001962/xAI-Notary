@@ -1,15 +1,17 @@
 # xAI-Notary
 
-A CLI demo that asks Grok a question, hashes the response with SHA-256, and registers the hash with the Cryptowerk Horizon SealAPI to create a verifiable blockchain proof of the AI's answer.
+A CLI demo that asks Grok a question, hashes both the prompt and the response with SHA-256, registers both with the Cryptowerk Horizon SealAPI, saves the resulting artifacts locally, and verifies them against the returned seals.
 
 ## What It Does
 
 1. Prompts you for a question via the terminal
 2. Sends the question to **xAI Grok** using the Vercel AI SDK (`@ai-sdk/xai`)
-3. Computes the **SHA-256 hash** of the response
-4. **Registers** the hash with Cryptowerk Horizon SealAPI (`/register`)
-5. **Polls** Horizon until the hash is anchored on-chain (`/getseal`)
-6. Prints the Grok answer, seal details, and blockchain explorer links
+3. Computes the **SHA-256 hash** of both the prompt and the response
+4. **Registers** both hashes with Cryptowerk Horizon SealAPI (`/register`) using `individualSeal`
+5. **Polls** Horizon until both documents are anchored on-chain (`/getseal`)
+6. Saves prompt/response text plus their seals under `artifacts/<timestamp>/`
+7. Calls Horizon `POST /verifyseal` for both saved artifacts
+8. Prints the Grok answer, seal details, explorer links, and verification responses
 
 ## Setup
 
@@ -51,13 +53,49 @@ node demo.js
 npm start
 ```
 
-You will be prompted to enter a question. The script will call Grok, hash the response, register it with Horizon, and wait for the blockchain anchor before printing the full seal details.
+You will be prompted to enter a question. The script will call Grok, hash the prompt and response, register both with Horizon, wait for both blockchain anchors, save the resulting artifacts, and verify the saved artifacts against the returned seals.
+
+## Verify Saved Artifacts
+
+To rerun verification later without generating a new Grok response:
+
+```bash
+node demo.js verify artifacts/<run-directory>
+```
+
+Example:
+
+```bash
+node demo.js verify artifacts/2026-03-22T23-58-48-393Z
+```
+
+The verify mode expects these files inside the run directory:
+
+- `prompt.txt`
+- `response.txt`
+- `prompt-seal.json`
+- `response-seal.json`
+
+If `meta.json` exists, the CLI will print its path as context before verifying.
+
+## Output Artifacts
+
+Each demo run writes a new directory under `artifacts/` containing:
+
+- `prompt.txt`
+- `response.txt`
+- `prompt-seal.json`
+- `response-seal.json`
+- `meta.json`
+
+`meta.json` includes the prompt and response hashes, retrieval IDs, verification URLs, blockchain registrations, and submitted timestamps.
 
 ## Notes
 
-- **Model**: Using `grok-4.20-reasoning` (flagship as of 2026). Check the [xAI model docs](https://docs.x.ai/developers/models) for alternatives.
+- **Model**: Using `grok-3-mini`. Check the [xAI model docs](https://docs.x.ai/developers/models) for alternatives.
 - **Polling**: Real blockchain anchors can take several minutes (Bitcoin/Ethereum confirmation times). The script polls every 10 seconds for up to ~7 minutes.
-- **Verification**: To independently verify a seal, re-hash the Grok response shown and follow the Merkle proof operations in `seal.proofs` against the blockchain transaction.
+- **Registration mode**: Horizon registration uses `individualSeal` so the prompt and response each receive their own retrieval ID and seal.
+- **Verification**: The CLI verifies both saved artifacts automatically at the end of a run using `POST /verifyseal`. You can also rerun verification later with `node demo.js verify <artifacts-run-directory>`.
 
 ## Dependencies
 
