@@ -164,7 +164,49 @@ async function pollForSeal(retrievalId) {
   throw new Error('Timeout waiting for seal – check Horizon status or blockchain delay');
 }
 
-async function main() {
+async function verifyArtifactsDir(runDir) {
+  const promptPath = path.join(runDir, 'prompt.txt');
+  const responsePath = path.join(runDir, 'response.txt');
+  const promptSealPath = path.join(runDir, 'prompt-seal.json');
+  const responseSealPath = path.join(runDir, 'response-seal.json');
+  const metaPath = path.join(runDir, 'meta.json');
+
+  const requiredPaths = [promptPath, responsePath, promptSealPath, responseSealPath];
+  const missingPaths = requiredPaths.filter(filePath => !fs.existsSync(filePath));
+  if (missingPaths.length > 0) {
+    throw new Error(`Missing artifact files: ${missingPaths.join(', ')}`);
+  }
+
+  console.log('Verifying saved artifacts with Horizon...');
+  console.log('Run directory:', runDir);
+
+  if (fs.existsSync(metaPath)) {
+    console.log('Metadata:', metaPath);
+  }
+
+  const savedPrompt = fs.readFileSync(promptPath, 'utf8');
+  const savedResponse = fs.readFileSync(responsePath, 'utf8');
+  const savedPromptSeal = JSON.parse(fs.readFileSync(promptSealPath, 'utf8'));
+  const savedResponseSeal = JSON.parse(fs.readFileSync(responseSealPath, 'utf8'));
+
+  const [promptVerifyResult, responseVerifyResult] = await Promise.all([
+    verifySeal({
+      hash: sha256Hex(savedPrompt),
+      seal: savedPromptSeal,
+    }),
+    verifySeal({
+      hash: sha256Hex(savedResponse),
+      seal: savedResponseSeal,
+    }),
+  ]);
+
+  console.log('Prompt verification response:');
+  console.log(JSON.stringify(promptVerifyResult, null, 2));
+  console.log('\nResponse verification response:');
+  console.log(JSON.stringify(responseVerifyResult, null, 2));
+}
+
+async function runDemo() {
   console.log('Grok + Horizon Notary CLI Demo');
   console.log('--------------------------------\n');
 
@@ -229,30 +271,35 @@ async function main() {
     console.log('Response seal:', artifacts.responseSealPath);
     console.log('Metadata:', artifacts.metaPath);
 
-    console.log('\nVerifying saved artifacts with Horizon...');
-    const savedPrompt = fs.readFileSync(artifacts.promptPath, 'utf8');
-    const savedResponse = fs.readFileSync(artifacts.responsePath, 'utf8');
-    const savedPromptSeal = JSON.parse(fs.readFileSync(artifacts.promptSealPath, 'utf8'));
-    const savedResponseSeal = JSON.parse(fs.readFileSync(artifacts.responseSealPath, 'utf8'));
-    const [promptVerifyResult, responseVerifyResult] = await Promise.all([
-      verifySeal({
-        hash: sha256Hex(savedPrompt),
-        seal: savedPromptSeal,
-      }),
-      verifySeal({
-        hash: sha256Hex(savedResponse),
-        seal: savedResponseSeal,
-      }),
-    ]);
-    console.log('Prompt verification response:');
-    console.log(JSON.stringify(promptVerifyResult, null, 2));
-    console.log('\nResponse verification response:');
-    console.log(JSON.stringify(responseVerifyResult, null, 2));
+    console.log('');
+    await verifyArtifactsDir(artifacts.runDir);
 
     console.log('\nVerification tip: Re-hash the saved prompt and response text files above and compare them against the stored seals or the blockchain proof data.');
   } catch (err) {
     console.error('\nError:', err.response?.data || err.message);
   }
+}
+
+async function main() {
+  const [, , command, commandArg] = process.argv;
+
+  if (command === 'verify') {
+    if (!commandArg) {
+      console.error('Usage: node demo.js verify <artifacts-run-directory>');
+      process.exitCode = 1;
+      return;
+    }
+
+    try {
+      await verifyArtifactsDir(path.resolve(commandArg));
+    } catch (err) {
+      console.error('\nError:', err.response?.data || err.message);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  await runDemo();
 }
 
 main();
