@@ -26,38 +26,45 @@ function ensureArtifactsDir() {
   return dir;
 }
 
-function saveArtifacts({ prompt, grokResponse, hash, retrievalId, sealDoc }) {
+function writeJson(filePath, value) {
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2));
+}
+
+function saveArtifacts({ prompt, grokResponse, promptHash, responseHash, promptSealDoc, responseSealDoc }) {
   const baseDir = ensureArtifactsDir();
   const runId = new Date().toISOString().replace(/[:.]/g, '-');
   const runDir = path.join(baseDir, runId);
   fs.mkdirSync(runDir, { recursive: true });
 
+  const promptPath = path.join(runDir, 'prompt.txt');
   const responsePath = path.join(runDir, 'response.txt');
-  const sealPath = path.join(runDir, 'seal.json');
+  const promptSealPath = path.join(runDir, 'prompt-seal.json');
+  const responseSealPath = path.join(runDir, 'response-seal.json');
   const metaPath = path.join(runDir, 'meta.json');
 
+  fs.writeFileSync(promptPath, prompt, 'utf8');
   fs.writeFileSync(responsePath, grokResponse, 'utf8');
-  fs.writeFileSync(sealPath, JSON.stringify(sealDoc.seal, null, 2));
-  fs.writeFileSync(
-    metaPath,
-    JSON.stringify(
-      {
-        prompt,
-        retrievalId,
-        responseHash: hash,
-        verificationURL: sealDoc.verificationURL || null,
-        blockchainRegistrations: sealDoc.blockchainRegistrations || [],
-        submittedAt: sealDoc.submittedAt || null,
-      },
-      null,
-      2
-    )
-  );
+  writeJson(promptSealPath, promptSealDoc.seal);
+  writeJson(responseSealPath, responseSealDoc.seal);
+  writeJson(metaPath, {
+    promptHash,
+    responseHash,
+    promptRetrievalId: promptSealDoc.retrievalId,
+    responseRetrievalId: responseSealDoc.retrievalId,
+    promptVerificationURL: promptSealDoc.verificationURL || null,
+    responseVerificationURL: responseSealDoc.verificationURL || null,
+    promptBlockchainRegistrations: promptSealDoc.blockchainRegistrations || [],
+    responseBlockchainRegistrations: responseSealDoc.blockchainRegistrations || [],
+    promptSubmittedAt: promptSealDoc.submittedAt || null,
+    responseSubmittedAt: responseSealDoc.submittedAt || null,
+  });
 
   return {
     runDir,
+    promptPath,
     responsePath,
-    sealPath,
+    promptSealPath,
+    responseSealPath,
     metaPath,
   };
 }
@@ -76,11 +83,11 @@ async function verifySeal({ hash, seal }) {
   return response.data;
 }
 
-async function registerHash(dataHash, lookupInfo = 'Grok-CLI-demo') {
+async function registerHashes(items) {
   const body = new URLSearchParams({
-    hashes: dataHash,
+    hashes: items.map(item => item.hash).join(','),
     mode: 'individualSeal',
-    lookupInfo,
+    lookupInfos: items.map(item => item.lookupInfo).join(','),
   });
 
   try {
@@ -88,12 +95,43 @@ async function registerHash(dataHash, lookupInfo = 'Grok-CLI-demo') {
       headers: HEADERS,
     });
     const docs = response.data.documents || [];
-    if (docs.length === 0) throw new Error('No retrievalId returned');
-    return docs[0].retrievalId;
+    if (docs.length !== items.length) {
+      throw new Error(`Expected ${items.length} retrieval IDs, got ${docs.length}`);
+    }
+    return docs.map((doc, index) => ({
+      label: items[index].label,
+      hash: items[index].hash,
+      lookupInfo: items[index].lookupInfo,
+      retrievalId: doc.retrievalId,
+    }));
   } catch (err) {
     console.error('Register failed:', err.response?.data || err.message);
     throw err;
   }
+}
+
+function printSealDetails(label, sealDoc) {
+  const seal = sealDoc.seal || {};
+
+  console.log(`\n${label} Seal Success! 🎉`);
+  console.log('Seal Details:');
+  console.log('Retrieval ID:', sealDoc.retrievalId);
+  console.log('Submitted at:', new Date(sealDoc.submittedAt).toISOString());
+  console.log('Complete:', seal.isComplete);
+  console.log('In at least one blockchain:', sealDoc.hasBeenInsertedIntoAtLeastOneBlockchain);
+
+  const proofs = seal.proofs?.[0] || {};
+  console.log('Proof method:', proofs.bundleMethod);
+
+  const bcRegs = sealDoc.blockchainRegistrations || [];
+  bcRegs.forEach((reg, i) => {
+    console.log(`\nBlockchain ${i + 1}: ${reg.blockChainDesc?.generalName || 'Unknown'}`);
+    console.log('Inserted at:', new Date(reg.insertedIntoBlockchainAt).toISOString());
+    if (reg.bcExplorerUrls?.length) {
+      console.log('Explorer links:');
+      reg.bcExplorerUrls.forEach(url => console.log(`  ${url}`));
+    }
+  });
 }
 
 async function pollForSeal(retrievalId) {
@@ -150,56 +188,68 @@ async function main() {
     console.log(grokResponse);
     console.log('\n');
 
-    // 2. Hash it (SHA-256)
-    const hash = sha256Hex(grokResponse);
-    console.log('SHA-256 Hash:', hash);
+    // 2. Hash prompt and response (SHA-256)
+    const promptHash = sha256Hex(prompt);
+    const responseHash = sha256Hex(grokResponse);
+    console.log('Prompt SHA-256 Hash:', promptHash);
+    console.log('Response SHA-256 Hash:', responseHash);
 
     // 3. Register with Horizon
-    console.log('\nRegistering hash with Horizon...');
-    const retrievalId = await registerHash(hash, `Grok-demo-${Date.now()}`);
-    console.log('Retrieval ID:', retrievalId);
-
-    // 4. Poll until sealed
-    const sealDoc = await pollForSeal(retrievalId);
-    const seal = sealDoc.seal || {};
-
-    // 5. Show results
-    console.log('\nSeal Success! 🎉');
-    console.log('Seal Details:');
-    console.log('Submitted at:', new Date(sealDoc.submittedAt).toISOString());
-    console.log('Complete:', seal.isComplete);
-    console.log('In at least one blockchain:', sealDoc.hasBeenInsertedIntoAtLeastOneBlockchain);
-
-    const proofs = seal.proofs?.[0] || {};
-    console.log('Proof method:', proofs.bundleMethod);
-
-    const bcRegs = sealDoc.blockchainRegistrations || [];
-    bcRegs.forEach((reg, i) => {
-      console.log(`\nBlockchain ${i + 1}: ${reg.blockChainDesc?.generalName || 'Unknown'}`);
-      console.log('Inserted at:', new Date(reg.insertedIntoBlockchainAt).toISOString());
-      if (reg.bcExplorerUrls?.length) {
-        console.log('Explorer links:');
-        reg.bcExplorerUrls.forEach(url => console.log(`  ${url}`));
-      }
+    console.log('\nRegistering prompt and response hashes with Horizon...');
+    const lookupBase = `Grok-demo-${Date.now()}`;
+    const registrations = await registerHashes([
+      { label: 'Prompt', hash: promptHash, lookupInfo: `${lookupBase}-prompt` },
+      { label: 'Response', hash: responseHash, lookupInfo: `${lookupBase}-response` },
+    ]);
+    registrations.forEach(reg => {
+      console.log(`${reg.label} Retrieval ID:`, reg.retrievalId);
     });
 
-    const artifacts = saveArtifacts({ prompt, grokResponse, hash, retrievalId, sealDoc });
+    // 4. Poll until sealed
+    const [promptSealDoc, responseSealDoc] = await Promise.all(
+      registrations.map(reg => pollForSeal(reg.retrievalId))
+    );
+
+    // 5. Show results
+    printSealDetails('Prompt', promptSealDoc);
+    printSealDetails('Response', responseSealDoc);
+
+    const artifacts = saveArtifacts({
+      prompt,
+      grokResponse,
+      promptHash,
+      responseHash,
+      promptSealDoc,
+      responseSealDoc,
+    });
     console.log('\nArtifacts saved:');
+    console.log('Prompt:', artifacts.promptPath);
     console.log('Response:', artifacts.responsePath);
-    console.log('Seal:', artifacts.sealPath);
+    console.log('Prompt seal:', artifacts.promptSealPath);
+    console.log('Response seal:', artifacts.responseSealPath);
     console.log('Metadata:', artifacts.metaPath);
 
     console.log('\nVerifying saved artifacts with Horizon...');
+    const savedPrompt = fs.readFileSync(artifacts.promptPath, 'utf8');
     const savedResponse = fs.readFileSync(artifacts.responsePath, 'utf8');
-    const savedSeal = JSON.parse(fs.readFileSync(artifacts.sealPath, 'utf8'));
-    const verifyResult = await verifySeal({
-      hash: sha256Hex(savedResponse),
-      seal: savedSeal,
-    });
-    console.log('Verification response:');
-    console.log(JSON.stringify(verifyResult, null, 2));
+    const savedPromptSeal = JSON.parse(fs.readFileSync(artifacts.promptSealPath, 'utf8'));
+    const savedResponseSeal = JSON.parse(fs.readFileSync(artifacts.responseSealPath, 'utf8'));
+    const [promptVerifyResult, responseVerifyResult] = await Promise.all([
+      verifySeal({
+        hash: sha256Hex(savedPrompt),
+        seal: savedPromptSeal,
+      }),
+      verifySeal({
+        hash: sha256Hex(savedResponse),
+        seal: savedResponseSeal,
+      }),
+    ]);
+    console.log('Prompt verification response:');
+    console.log(JSON.stringify(promptVerifyResult, null, 2));
+    console.log('\nResponse verification response:');
+    console.log(JSON.stringify(responseVerifyResult, null, 2));
 
-    console.log('\nVerification tip: Re-hash the Grok response above and follow the Merkle proof ops in seal.proofs to verify against the blockchain tx.');
+    console.log('\nVerification tip: Re-hash the saved prompt and response text files above and compare them against the stored seals or the blockchain proof data.');
   } catch (err) {
     console.error('\nError:', err.response?.data || err.message);
   }
