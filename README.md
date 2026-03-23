@@ -127,6 +127,25 @@ This repo does not currently fetch those wrappers, but they can be requested fro
 
 If you want to inspect Horizon responses manually outside the CLI, `jq` is useful for formatting large JSON responses and extracting fields such as retrieval IDs or seals. The Cryptowerk tutorials also use shell environment variables and URL encoding helpers for cURL-heavy workflows.
 
+## OpenClaw Webhook Notes
+
+If you want Horizon callbacks to trigger an OpenClaw webhook, the OpenClaw side uses inbound HTTP hook endpoints such as:
+
+- `POST /hooks/wake`
+- `POST /hooks/agent`
+- `POST /hooks/<name>`
+
+OpenClaw’s own docs show local examples on `127.0.0.1`, which is fine for local testing. But a Cryptowerk callback is sent from an external service, so `localhost` will not work unless that service is running on the same machine. In practice, your callback target must be reachable from outside your laptop or workstation:
+
+- a public HTTPS domain behind a reverse proxy
+- a tailnet or private network route reachable by the caller
+- a tunnel that exposes your local OpenClaw gateway safely
+
+For external callbacks, protect the endpoint with a dedicated OpenClaw hook token and a trusted reverse proxy. Sources:
+
+- [OpenClaw webhook docs](https://docs.openclaw.ai/automation/webhook)
+- [OpenClaw trusted proxy auth](https://docs.openclaw.ai/gateway/trusted-proxy-auth)
+
 ## Notes
 
 - **Model**: Using `grok-3-mini`. Check the [xAI model docs](https://docs.x.ai/developers/models) for alternatives.
@@ -136,6 +155,7 @@ If you want to inspect Horizon responses manually outside the CLI, `jq` is usefu
 - **`/getseal` semantics**: A seal is complete when the response document reports `seal.isComplete === true`. The blockchain insertion state is reported at the document level, for example `hasBeenInsertedIntoAtLeastOneBlockchain`.
 - **Callbacks**: Horizon also supports callbacks via webhook, email, or MQTT, but this repo intentionally uses polling to keep the demo self-contained.
 - **Bulk seals**: Horizon supports `bulkSeal` mode for large collections of hashes, but this demo intentionally stays on `individualSeal` because it keeps prompt and response verification easy to understand.
+- **`meta.json`**: This file is a local run summary. It stores the prompt and response hashes, retrieval IDs, verification URLs, blockchain registration metadata, and submitted timestamps so you can inspect a run without parsing terminal output.
 
 ## Dependencies
 

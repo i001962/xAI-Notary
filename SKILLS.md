@@ -74,6 +74,42 @@ Each run directory should contain:
 
 `artifacts/` is generated output and should remain ignored by git.
 
+### `meta.json`
+
+`meta.json` is the local summary file for one demo run. It currently stores:
+
+- `promptHash`
+- `responseHash`
+- `promptRetrievalId`
+- `responseRetrievalId`
+- `promptVerificationURL`
+- `responseVerificationURL`
+- `promptBlockchainRegistrations`
+- `responseBlockchainRegistrations`
+- `promptSubmittedAt`
+- `responseSubmittedAt`
+
+Use it as the quick index into a run directory; the actual verifiable payloads remain the text files and seal JSON files.
+
+## OpenClaw Webhook Interop
+
+If someone wants to wire Cryptowerk callbacks into OpenClaw:
+
+- OpenClaw exposes inbound webhook endpoints under `/hooks`, for example:
+  - `POST /hooks/wake`
+  - `POST /hooks/agent`
+  - `POST /hooks/<name>`
+- Auth should use a dedicated hook token via:
+  - `Authorization: Bearer <token>`
+  - or `x-openclaw-token: <token>`
+- OpenClaw docs show local examples on `127.0.0.1`, but that is only suitable for local senders.
+- A Cryptowerk webhook callback is sent by an external service, so `localhost` or `127.0.0.1` will not work unless OpenClaw is running on the same remote host receiving the callback.
+- In practice, use:
+  - a public HTTPS domain behind a reverse proxy
+  - a network-routable private address the caller can reach
+  - or a secure tunnel exposing the gateway
+- Keep webhook ingress behind loopback, a tailnet, or a trusted reverse proxy whenever possible.
+
 ## Change Guidance
 
 - Preserve the repo as a self-contained demo.
