@@ -2,6 +2,8 @@
 
 A CLI demo that asks Grok a question, hashes both the prompt and the response with SHA-256, registers both with the Cryptowerk Horizon SealAPI, saves the resulting artifacts locally, and verifies them against the returned seals.
 
+Cryptowerk Horizon API is a blockchain-anchored proof-of-existence system. You do not send original documents or raw AI output to Horizon. You send only hashes. Horizon returns retrieval IDs first and, once anchoring is complete, seals that contain the proof path and blockchain references needed to verify the data later.
+
 ## What It Does
 
 1. Prompts you for a question via the terminal
@@ -13,13 +15,43 @@ A CLI demo that asks Grok a question, hashes both the prompt and the response wi
 7. Calls Horizon `POST /verifyseal` for both saved artifacts
 8. Prints the Grok answer, seal details, explorer links, and verification responses
 
+## Horizon Overview
+
+The underlying Horizon flow is:
+
+`hash(es) -> retrieval ID(s) -> seal(s)`
+
+This repo uses that flow directly:
+
+- prompt text and response text are hashed locally
+- hashes are registered with Horizon
+- Horizon returns one retrieval ID per document in `individualSeal` mode
+- after the hash is anchored on-chain, Horizon returns a seal for each document
+
+Cryptowerk documentation describes Horizon as anchoring into Bitcoin and Ethereum by default. The exact blockchains available to your account can depend on account configuration and environment. The CLI prints whatever blockchain registrations Horizon returns, including explorer URLs when present.
+
+## Why The API Key Matters
+
+This demo requires both:
+
+- an xAI API key for the Grok call
+- a Cryptowerk Horizon API key and secret for registration, seal retrieval, and verification
+
+Horizon authentication in this repo uses the `X-API-Key` header with the API key and API secret. Without valid Horizon credentials, the CLI cannot:
+
+- register hashes
+- poll `getseal`
+- call `verifyseal`
+
+You can request Horizon credentials through the Cryptowerk developer portal.
+
 ## Setup
 
 ### Prerequisites
 
 - Node.js 18+
 - An [xAI API key](https://console.x.ai)
-- A [Cryptowerk Horizon](https://developers.cryptowerk.com) account (API key + secret)
+- A [Cryptowerk Horizon](https://developers.cryptowerk.com) account with API key and secret
 
 ### Install
 
@@ -44,6 +76,8 @@ HORIZON_API_SECRET=your_cryptowerk_api_secret
 ```
 
 > **Never commit `.env` to git.** It is already listed in `.gitignore`.
+
+`XAI_API_KEY` is used only for the Grok generation step. `HORIZON_API_KEY` and `HORIZON_API_SECRET` are required for every Horizon API interaction in this demo.
 
 ## Run
 
@@ -156,6 +190,7 @@ For external callbacks, protect the endpoint with a dedicated OpenClaw hook toke
 - **Callbacks**: Horizon also supports callbacks via webhook, email, or MQTT, but this repo intentionally uses polling to keep the demo self-contained.
 - **Bulk seals**: Horizon supports `bulkSeal` mode for large collections of hashes, but this demo intentionally stays on `individualSeal` because it keeps prompt and response verification easy to understand.
 - **`meta.json`**: This file is a local run summary. It stores the prompt and response hashes, retrieval IDs, verification URLs, blockchain registration metadata, and submitted timestamps so you can inspect a run without parsing terminal output.
+- **What is anchored on-chain**: Horizon bundles submitted hashes and anchors the resulting proof data into one or more blockchains. The seal then provides the mathematical path from your saved document hash to the on-chain anchor.
 
 ## Dependencies
 
